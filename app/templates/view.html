@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ session.title }} · readwell</title>
+  <link rel="stylesheet" href="/static/view.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="title">
+      <strong>{{ session.title }}</strong>
+      <a class="src" href="{{ session.url }}" target="_blank" rel="noopener">원문 ↗</a>
+    </div>
+    <div class="meta">읽은 날 {{ session.created_at }}</div>
+  </header>
+
+  {% if invalid_locators %}
+  <div class="warn">일부 분석 항목이 원문에 없는 위치를 가리킵니다:
+    {{ invalid_locators | join(", ") }}</div>
+  {% endif %}
+
+  <main class="cols">
+    <!-- 좌: 원문 -->
+    <section class="original" id="original">
+      {% for s in session.extraction.sections %}
+        {% if s.title %}<h2 id="{{ s.locator }}" class="sec-title">{{ s.title }}</h2>{% endif %}
+        {% for p in s.paragraphs %}
+          <p id="{{ p.locator }}" class="para">{{ p.text }}</p>
+        {% endfor %}
+      {% endfor %}
+    </section>
+
+    <!-- 우: 분석 -->
+    <aside class="analysis">
+      <nav class="tabs">
+        <button class="tab active" data-tab="gist">색인</button>
+        <button class="tab" data-tab="questions">질문</button>
+        <button class="tab" data-tab="critique">비판</button>
+        <button class="tab" data-tab="claims">매핑</button>
+        <button class="tab" data-tab="ask">추가질문</button>
+      </nav>
+
+      {% if analysis %}
+      <div class="panel active" data-panel="gist">
+        <p class="scan">{{ analysis.scan }}</p>
+        <ul class="gist">
+          {% for g in analysis.gist %}
+          <li><a class="anchor" href="#{{ g.locator }}">{{ g.section }}</a>
+            <span>{{ g.one_line }}</span></li>
+          {% endfor %}
+        </ul>
+      </div>
+
+      <div class="panel" data-panel="questions">
+        <ul class="qa">
+          {% for q in analysis.questions %}
+          <li>
+            <div class="q">{{ q.q }}</div>
+            <blockquote>{{ q.answer_quote }}
+              <a class="anchor" href="#{{ q.locator }}">{{ q.locator }}</a></blockquote>
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+
+      <div class="panel" data-panel="critique">
+        <ul class="critique">
+          {% for c in analysis.critique %}
+          <li>
+            <div>숨은 전제: {{ c.hidden_premise }}</div>
+            <div>약한 근거: {{ c.weak_evidence }}</div>
+            <div>빠진 반례: {{ c.missing_counterexample }}</div>
+            <a class="anchor" href="#{{ c.locator }}">{{ c.locator }}</a>
+          </li>
+          {% else %}
+          <li class="empty">비판 항목 없음</li>
+          {% endfor %}
+        </ul>
+      </div>
+
+      <div class="panel" data-panel="claims">
+        <ul class="claims">
+          {% for c in analysis.claims %}
+          <li>
+            <div class="claim">{{ c.claim }}</div>
+            <div class="evidence">근거: {{ c.evidence }}
+              <a class="anchor" href="#{{ c.locator }}">{{ c.locator }}</a></div>
+            {% if c.weakness %}<div class="weak">약점: {{ c.weakness }}</div>{% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% else %}
+      <div class="panel active" data-panel="gist">
+        <p class="empty">분석이 없습니다(추출만 저장됨).</p>
+      </div>
+      {% endif %}
+
+      <div class="panel" data-panel="ask">
+        <form id="ask-form">
+          <select id="ask-kind">
+            <option value="ask">추가 질문</option>
+            <option value="feynman">Feynman 검증(내 이해 점검)</option>
+            <option value="gloss">개념 글로싱(용어 풀이)</option>
+          </select>
+          <textarea id="ask-input" rows="4"
+            placeholder="원문 맥락으로 물어보세요. Feynman은 내 이해를 적고, 글로싱은 막힌 용어를 적으세요."></textarea>
+          <button type="submit">보내기</button>
+        </form>
+        <ul id="ask-log" class="ask-log">
+          {% for t in session.conversation %}
+          <li>
+            <div class="q">[{{ t.kind }}] {{ t.question }}</div>
+            <div class="a">{{ t.answer }}
+              {% for loc in t.locators %}<a class="anchor" href="#{{ loc }}">{{ loc }}</a>{% endfor %}
+            </div>
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+    </aside>
+  </main>
+
+  <script>window.SESSION_ID = "{{ session.id }}";</script>
+  <script src="/static/view.js"></script>
+</body>
+</html>
