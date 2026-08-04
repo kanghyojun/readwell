@@ -8,7 +8,13 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field
+
+# 읽기 작업의 진행 상태. extracting/analyzing이면 아직 백그라운드에서 도는 중이다.
+SessionStatus = Literal["extracting", "analyzing", "done", "failed"]
+PENDING_STATUSES: frozenset[str] = frozenset({"extracting", "analyzing"})
 
 
 class _CamelModel(BaseModel):
@@ -102,11 +108,35 @@ class ChatTurn(_CamelModel):
     kind: str = "ask"  # ask | feynman | gloss
 
 
+class Translation(_CamelModel):
+    """비한국어 원문의 문단별 번역. 문단마다 따로 채워지므로 부분 상태가 정상이다."""
+
+    done: bool = False
+    paragraphs: dict[str, str] = Field(default_factory=dict)
+    note: str | None = None  # 건너뛴 사유나 부분 실패 안내
+
+    def missing(self, locators: set[str]) -> set[str]:
+        return locators - set(self.paragraphs)
+
+
 class Session(_CamelModel):
+    """읽기 한 건. 추출·분석이 끝나기 전에도 먼저 만들어 두고 상태를 갱신한다.
+
+    기본값이 ``done``이라 status 필드가 없던 예전 세션 파일도 그대로 읽힌다.
+    """
+
     id: str
     url: str
     title: str
     created_at: str
-    extraction: Extraction
+    status: SessionStatus = "done"
+    error: str | None = None
+    questions: list[str] = Field(default_factory=list)  # 읽기 전에 정한 질문. 비면 프리셋
+    extraction: Extraction | None = None
     analysis: Analysis | None = None
+    translation: Translation | None = None  # 한국어 원문이면 None
     conversation: list[ChatTurn] = Field(default_factory=list)
+
+    @property
+    def pending(self) -> bool:
+        return self.status in PENDING_STATUSES

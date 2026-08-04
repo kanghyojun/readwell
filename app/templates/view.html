@@ -6,14 +6,29 @@
   <title>{{ session.title }} · readwell</title>
   <link rel="stylesheet" href="/static/view.css">
 </head>
-<body>
+<body data-status="{{ session.status }}">
   <header class="topbar">
     <div class="title">
+      <a class="to-index" href="/" title="읽은 글 목록">←</a>
       <strong>{{ session.title }}</strong>
       <a class="src" href="{{ session.url }}" target="_blank" rel="noopener">원문 ↗</a>
     </div>
-    <div class="meta">읽은 날 {{ session.created_at }}</div>
+    <div class="meta">
+      {% if session.translation %}
+      <span class="tr-toggle" id="tr-toggle" hidden>
+        <button type="button" data-mode="both" class="active">원문+번역</button
+        ><button type="button" data-mode="source">원문</button
+        ><button type="button" data-mode="target">번역</button>
+      </span>
+      <span class="tr-progress" id="tr-progress"></span>
+      {% endif %}
+      읽은 날 {{ session.created_at }}
+    </div>
   </header>
+
+  {% if session.error %}
+  <div class="warn failed">{{ session.error }}</div>
+  {% endif %}
 
   {% if invalid_locators %}
   <div class="warn">일부 분석 항목이 원문에 없는 위치를 가리킵니다:
@@ -21,14 +36,23 @@
   {% endif %}
 
   <main class="cols">
-    <!-- 좌: 원문 -->
+    <!-- 좌: 원문. 추출이 끝나는 즉시 채워지고, 분석은 나중에 붙는다. -->
     <section class="original" id="original">
-      {% for s in session.extraction.sections %}
-        {% if s.title %}<h2 id="{{ s.locator }}" class="sec-title">{{ s.title }}</h2>{% endif %}
-        {% for p in s.paragraphs %}
-          <p id="{{ p.locator }}" class="para">{{ p.text }}</p>
+      {% if session.extraction %}
+        {% for s in session.extraction.sections %}
+          {% if s.title %}<h2 id="{{ s.locator }}" class="sec-title">{{ s.title }}</h2>{% endif %}
+          {% for p in s.paragraphs %}
+            <p id="{{ p.locator }}" class="para">{{ p.text }}</p>
+            {# 번역은 문단마다 따로 도착한다. 서버 렌더링과 JS 삽입이 같은 표식을 쓴다. #}
+            {% set tr = translations.get(p.locator) %}
+            {% if tr %}<p class="para-tr" data-tr-for="{{ p.locator }}">{{ tr }}</p>{% endif %}
+          {% endfor %}
         {% endfor %}
-      {% endfor %}
+      {% elif session.status == "failed" %}
+        <p class="empty">원문을 가져오지 못했습니다.</p>
+      {% else %}
+        <p class="pending"><span class="spinner"></span>원문을 가져오는 중…</p>
+      {% endif %}
     </section>
 
     <!-- 우: 분석 -->
@@ -93,7 +117,16 @@
       </div>
       {% else %}
       <div class="panel active" data-panel="gist">
-        <p class="empty">분석이 없습니다(추출만 저장됨).</p>
+        {% if session.status == "analyzing" %}
+          <p class="pending"><span class="spinner"></span>분석 중…<br>
+            <small>원문은 왼쪽에서 먼저 읽으셔도 됩니다. 끝나면 자동으로 채워집니다.</small></p>
+        {% elif session.status == "extracting" %}
+          <p class="pending"><span class="spinner"></span>원문을 가져오는 중…</p>
+        {% elif session.status == "failed" %}
+          <p class="empty">작업이 실패했습니다.</p>
+        {% else %}
+          <p class="empty">분석이 없습니다(추출만 저장됨).</p>
+        {% endif %}
       </div>
       {% endif %}
 
@@ -122,7 +155,11 @@
     </aside>
   </main>
 
-  <script>window.SESSION_ID = "{{ session.id }}";</script>
+  <script>
+    window.SESSION_ID = "{{ session.id }}";
+    window.HAS_TRANSLATION = {{ "true" if session.translation else "false" }};
+    window.TRANSLATING = {{ "true" if translating else "false" }};
+  </script>
   <script src="/static/view.js"></script>
 </body>
 </html>

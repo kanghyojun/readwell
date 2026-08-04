@@ -92,3 +92,96 @@ blockquote { margin: 0; padding-left: .8rem; border-left: 3px solid var(--accent
 #ask-form button { background: var(--accent); color: #fff; border: none; cursor: pointer; }
 #ask-form button[disabled] { opacity: .5; cursor: wait; }
 .ask-log .a { margin-top: .3rem; }
+
+/* --- 작업 진행 중 표시 ------------------------------------------------- */
+/* 추출·분석은 백그라운드에서 돈다. 끝난 부분부터 먼저 보여주고 나머지는 대기. */
+
+.warn.failed { background: #f8d7d5; color: #7a1f18; }
+@media (prefers-color-scheme: dark) {
+  .warn.failed { background: #3a1c1a; color: #f0b3ae; }
+}
+
+.pending {
+  display: flex; align-items: center; gap: .55rem;
+  padding: 1rem 0; color: var(--muted); font-size: .95rem;
+}
+.pending small { display: block; margin-top: .3rem; font-size: .82rem; opacity: .8; }
+
+.spinner {
+  flex: none; width: 14px; height: 14px; border-radius: 50%;
+  border: 2px solid var(--line); border-top-color: var(--accent);
+  animation: spin .8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner { animation-duration: 3s; }
+}
+
+/* --- 문단별 번역 (immersive translate 방식) ---------------------------- */
+/* 원문 바로 아래에 번역을 붙인다. 원문이 주(主)라는 게 보이게 톤을 낮춘다. */
+
+.para-tr {
+  margin: -.4rem 0 1rem; padding-left: .7rem;
+  border-left: 2px solid var(--line);
+  color: var(--muted); font-size: .95rem;
+}
+
+body.tr-mode-source .para-tr { display: none; }
+body.tr-mode-target .para { display: none; }
+body.tr-mode-target .para-tr {
+  margin: 0 0 1rem; padding-left: 0; border-left: none;
+  color: var(--fg); font-size: 1rem;
+}
+
+.tr-toggle { display: inline-flex; margin-right: .6rem; vertical-align: middle; }
+.tr-toggle button {
+  padding: .15rem .5rem; font: inherit; font-size: .75rem;
+  color: var(--muted); background: transparent;
+  border: 1px solid var(--line); border-right: none; cursor: pointer;
+}
+.tr-toggle button:first-child { border-radius: 5px 0 0 5px; }
+.tr-toggle button:last-child { border-right: 1px solid var(--line); border-radius: 0 5px 5px 0; }
+.tr-toggle button.active { color: #fff; background: var(--accent); border-color: var(--accent); }
+
+.tr-progress { margin-right: .6rem; font-size: .78rem; color: var(--muted); }
+
+/* --- 읽은 글 목록 (/) --------------------------------------------------- */
+
+.index-list { max-width: 760px; margin: 0 auto; padding: 1.4rem 1.2rem 4rem; }
+
+.index-row {
+  display: flex; align-items: flex-start; gap: 1rem;
+  padding: .85rem 0; border-bottom: 1px solid var(--line);
+}
+.index-main { flex: 1; min-width: 0; }
+
+.index-title {
+  display: block; color: var(--fg); font-weight: 600; text-decoration: none;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.index-title:hover { color: var(--accent); }
+
+.index-meta {
+  margin-top: .2rem; font-size: .78rem; color: var(--muted);
+  display: flex; flex-wrap: wrap; gap: .5rem; align-items: center;
+}
+.index-meta .tag {
+  padding: .05rem .4rem; font-size: .72rem;
+  border: 1px solid var(--line); border-radius: 999px;
+}
+.index-meta .tag.fail { color: #c0392b; border-color: #c0392b; }
+
+.index-translate {
+  flex: none; padding: .25rem .7rem; font: inherit; font-size: .78rem;
+  color: var(--accent); background: transparent;
+  border: 1px solid var(--accent); border-radius: 6px; cursor: pointer;
+}
+.index-translate:disabled { color: var(--muted); border-color: var(--line); cursor: default; }
+
+.index-list .empty { padding: 2.5rem 0; color: var(--muted); text-align: center; }
+
+.to-index {
+  margin-right: .5rem; color: var(--muted); text-decoration: none; font-size: 1.05rem;
+}
+.to-index:hover { color: var(--accent); }
