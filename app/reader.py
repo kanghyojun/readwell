@@ -10,6 +10,7 @@ ClaudeAgentRunner(구독 OAuth)로 돈다.
 
 from __future__ import annotations
 
+import re
 from typing import Protocol
 
 from pydantic import ValidationError
@@ -47,6 +48,43 @@ class AgentRunner(Protocol):
 
 # --- 프롬프트 구성 -----------------------------------------------------------
 
+# 프롬프트에서 입력 경계를 표시하는 태그. 구분선(`=== 본문 시작 ===`) 대신 이걸
+# 쓰는 이유는 대칭이 아니라서다. 구분선은 입력에도 출력에도 어울리는 모양이라
+# 모델이 답변까지 `=== 번역 시작 ===`으로 감싸버리는데, XML 태그는 입력 구조를
+# 나타내는 관례로 굳어 있어 출력에 따라붙지 않는다.
+PROMPT_TAGS = (
+    "document_title",
+    "paragraph",
+    "title",
+    "source_url",
+    "body",
+    "conversation",
+    "user_input",
+)
+
+_TAG_RE = re.compile(r"</?(?:%s)>" % "|".join(PROMPT_TAGS), re.IGNORECASE)
+
+# `=== 번역 시작 ===` 꼴의 구분선. 모델이 지어내는 이름은 예측할 수 없으니
+# 이름이 아니라 모양으로 잡는다. 등호가 아닌 글자를 하나 이상 요구해서 마크다운
+# 밑줄 제목(`====`)은 건드리지 않고, 등호 세 개 이상을 요구해서 `a == b` 같은
+# 비교 연산자는 건드리지 않는다.
+_RULE = r"={3,}[^=\n]+={3,}"
+_RULE_LINE_RE = re.compile(rf"^[ \t]*{_RULE}[ \t]*$", re.MULTILINE)
+_RULE_EDGE_RE = re.compile(rf"^\s*{_RULE}\s*|\s*{_RULE}\s*$")
+
+
+def strip_prompt_echo(text: str) -> str:
+    """모델이 프롬프트 형식을 흉내내 출력에 붙인 태그·구분선을 걷어낸다.
+
+    프롬프트로 하지 말라고 일러도 확률이 줄 뿐 0은 아니다. 저장 전에 한 번 더
+    막는다. 원문을 그대로 옮기는 인용 필드에는 쓰지 않는다. 원문에 그런 줄이
+    있었다면 지우는 쪽이 손해다.
+    """
+    out = _TAG_RE.sub("", text)
+    out = _RULE_LINE_RE.sub("", out)
+    out = _RULE_EDGE_RE.sub("", out)
+    return out.strip()
+
 
 def render_located_body(extraction: Extraction) -> str:
     """문단마다 [locator]를 앞에 붙인 본문. agent가 정확한 위치를 쓰게 하는 근거."""
@@ -59,23 +97,31 @@ def render_located_body(extraction: Extraction) -> str:
     return "\n\n".join(out)
 
 
-def build_analysis_prompt(extraction: Extraction) -> str:
-    questions = "\n".join(f"  {i}. {q}" for i, q in enumerate(PRESET_QUESTIONS, 1))
+def build_analysis_prompt(
+    extraction: Extraction, questions: list[str] | None = None
+) -> str:
+    """questions를 주면 프리셋 대신 그것만 묻는다. 읽기 전에 정한 질문이 우선이다."""
+    asked = [q.strip() for q in (questions or []) if q.strip()] or PRESET_QUESTIONS
+    asked_lines = "\n".join(f"  {i}. {q}" for i, q in enumerate(asked, 1))
     return (
-        f"제목: {extraction.title}\n"
-        f"원문 URL: {extraction.url}\n\n"
-        "아래 본문을 방법론대로 분석해 스키마에 맞는 JSON으로 답하라.\n"
+        "아래 본문을 방법론대로 분석해 스키마에 맞는 JSON으로 답하라.\n\n"
+        "입력은 XML 태그로 구분되어 있다. 태그의 역할:\n"
+        "- <title>: 글 제목.\n"
+        "- <source_url>: 원문 주소.\n"
+        "- <body>: 분석할 본문. 문단마다 [locator]가 대괄호로 앞에 붙어 있다.\n\n"
+        "채울 필드:\n"
         "- scan: 이 글이 전체적으로 무엇에 관한지 한 문단.\n"
         "- gist: 섹션별 한 줄 요지 + locator(원문 회귀용 지도).\n"
         "- claims: 핵심 주장, 근거, locator, 약한 지점(있으면).\n"
-        "- questions: 아래 프리셋 질문의 답을 원문 문장 인용(answerQuote)과 locator로. "
+        "- questions: 아래 질문의 답을 원문 문장 인용(answerQuote)과 locator로. "
         "답이 없으면 answerQuote를 '없음'으로.\n"
-        f"{questions}\n"
+        f"{asked_lines}\n"
         "- critique: 주장별 숨은 전제, 약한 근거, 빠진 반례 + locator.\n\n"
-        "모든 locator는 아래 본문에 대괄호로 표시된 값만 쓴다.\n\n"
-        "=== 본문 시작 ===\n"
-        f"{render_located_body(extraction)}\n"
-        "=== 본문 끝 ==="
+        "모든 locator는 <body>에 대괄호로 표시된 값만 쓴다.\n"
+        "필드 값에는 내용만 담는다. 위의 XML 태그를 값 안에 다시 적지 마라.\n\n"
+        f"<title>{extraction.title}</title>\n"
+        f"<source_url>{extraction.url}</source_url>\n\n"
+        f"<body>\n{render_located_body(extraction)}\n</body>"
     )
 
 
@@ -103,24 +149,37 @@ ASK_SCHEMA: dict = {
 
 def build_ask_prompt(session: Session, question: str, kind: str = "ask") -> str:
     instruction = _ASK_KIND_INSTRUCTIONS.get(kind, _ASK_KIND_INSTRUCTIONS["ask"])
+    tag_guide = ["- <title>: 글 제목.", "- <source_url>: 원문 주소."]
+    if session.conversation:
+        tag_guide.append("- <conversation>: 지금까지 오간 질문(Q)과 답(A).")
+    tag_guide += [
+        "- <user_input>: 이번에 답할 사용자 입력.",
+        "- <body>: 근거로 삼을 원문. 문단마다 [locator]가 대괄호로 앞에 붙어 있다.",
+    ]
     parts = [
-        f"제목: {session.title}",
-        f"원문 URL: {session.url}",
-        "",
         instruction,
+        "",
+        "입력은 XML 태그로 구분되어 있다. 태그의 역할:",
+        *tag_guide,
+        "",
+        "answer에는 답변 본문만 담는다. 위의 XML 태그를 답변 안에 다시 적지 마라.",
+        "",
+        f"<title>{session.title}</title>",
+        f"<source_url>{session.url}</source_url>",
     ]
     if session.conversation:
-        parts += ["", "이전 대화:"]
+        parts += ["", "<conversation>"]
         for turn in session.conversation:
             parts.append(f"- Q: {turn.question}")
             parts.append(f"  A: {turn.answer}")
+        parts.append("</conversation>")
     parts += [
         "",
-        f"사용자 입력: {question}",
+        f"<user_input>\n{question}\n</user_input>",
         "",
-        "=== 원문 시작 ===",
+        "<body>",
         render_located_body(session.extraction),
-        "=== 원문 끝 ===",
+        "</body>",
     ]
     return "\n".join(parts)
 
@@ -128,9 +187,15 @@ def build_ask_prompt(session: Session, question: str, kind: str = "ask") -> str:
 # --- 실행 --------------------------------------------------------------------
 
 
-async def analyze(extraction: Extraction, *, agent: AgentRunner) -> Analysis:
-    prompt = build_analysis_prompt(extraction)
+async def analyze(
+    extraction: Extraction, *, agent: AgentRunner, questions: list[str] | None = None
+) -> Analysis:
+    prompt = build_analysis_prompt(extraction, questions)
     raw = await agent.run(prompt, Analysis.json_schema())
+    # scan만 자유 서술이라 프롬프트 형식이 새어들 여지가 있다. 나머지 필드는
+    # 원문 인용이거나 한 줄짜리 구문이라 그대로 둔다.
+    if isinstance(raw.get("scan"), str):
+        raw = {**raw, "scan": strip_prompt_echo(raw["scan"])}
     try:
         return Analysis.model_validate(raw)
     except ValidationError as e:
@@ -144,7 +209,7 @@ async def ask(
     raw = await agent.run(prompt, ASK_SCHEMA)
     return ChatTurn(
         question=question,
-        answer=str(raw.get("answer", "")),
+        answer=strip_prompt_echo(str(raw.get("answer", ""))),
         locators=list(raw.get("locators", [])),
         kind=kind,
     )
@@ -180,7 +245,9 @@ class ClaudeAgentRunner:
             output_format={"type": "json_schema", "schema": schema},
             allowed_tools=[],
             setting_sources=[],  # SDK 격리: 프로젝트 설정/CLAUDE.md 로드 안 함
-            max_turns=1,
+            # 1이면 모델이 구조화 출력 도구를 부르기 전에 턴이 끝나 전부 실패한다.
+            # 짧은 프롬프트(문단 번역)에서 특히 잘 터진다. 실측 1: 0/8, 3: 8/8.
+            max_turns=3,
             model=self.model,
         )
         structured: dict | None = None
