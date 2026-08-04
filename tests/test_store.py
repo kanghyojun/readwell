@@ -3,6 +3,7 @@
 from app.models import Analysis, ChatTurn, Extraction, Paragraph, Section, Session
 from app.store import (
     append_turn,
+    list_sessions,
     load_session,
     render_markdown,
     save_session,
@@ -112,3 +113,31 @@ def test_write_vault_md_uses_date_and_slug(tmp_path):
     assert path.name == "2026-07-11-긴-글-잘-읽기-실험.md"
     assert path.exists()
     assert "긴 글 잘 읽기 실험" in path.read_text(encoding="utf-8")
+
+
+# --- 세션 목록 ---------------------------------------------------------------
+
+
+def test_list_sessions_newest_first(tmp_path):
+    """목록 페이지는 최근에 읽은 글이 위로 온다."""
+    for sid, created in [
+        ("old", "2026-07-01T09:00:00"),
+        ("new", "2026-07-23T18:00:00"),
+        ("mid", "2026-07-10T12:00:00"),
+    ]:
+        s = _session(sid)
+        s.created_at = created
+        save_session(s, data_dir=tmp_path)
+
+    assert [s.id for s in list_sessions(data_dir=tmp_path)] == ["new", "mid", "old"]
+
+
+def test_list_sessions_skips_corrupt_files(tmp_path):
+    save_session(_session("ok"), data_dir=tmp_path)
+    (tmp_path / "broken.json").write_text("{ not json", encoding="utf-8")
+
+    assert [s.id for s in list_sessions(data_dir=tmp_path)] == ["ok"]
+
+
+def test_list_sessions_empty_when_no_data_dir(tmp_path):
+    assert list_sessions(data_dir=tmp_path / "없음") == []

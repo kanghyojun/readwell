@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>readwell · 읽은 글</title>
+  <link rel="stylesheet" href="/static/view.css">
+</head>
+<body class="index-page">
+  <header class="topbar">
+    <div class="title"><strong>readwell</strong></div>
+    <div class="meta">읽은 글 {{ items | length }}건</div>
+  </header>
+
+  <main class="index-list">
+    {% for it in items %}
+    <article class="index-row">
+      <div class="index-main">
+        <a class="index-title" href="/view/{{ it.session.id }}">{{ it.session.title }}</a>
+        <div class="index-meta">
+          <span class="host">{{ it.host }}</span>
+          <span class="when">{{ it.session.created_at[:16] | replace("T", " ") }}</span>
+          {% if it.session.analysis %}<span class="tag">분석</span>{% endif %}
+          {% if it.translated %}<span class="tag">번역 {{ it.translated }}문단</span>{% endif %}
+          {% if it.session.questions %}
+            <span class="tag">질문 {{ it.session.questions | length }}</span>
+          {% endif %}
+          {% if it.session.status == "failed" %}<span class="tag fail">실패</span>{% endif %}
+        </div>
+      </div>
+      {% if it.can_translate %}
+      <button class="index-translate" data-translate="{{ it.session.id }}">번역</button>
+      {% endif %}
+    </article>
+    {% else %}
+    <p class="empty">아직 읽은 글이 없습니다.
+      확장 팝업에서 <strong>이 페이지 읽기</strong>를 눌러보세요.</p>
+    {% endfor %}
+  </main>
+
+  <script src="/static/index.js"></script>
+</body>
+</html>

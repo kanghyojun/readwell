@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 from pathlib import Path
 
@@ -33,12 +34,18 @@ def _session_path(data_dir: Path | str, sid: str) -> Path:
 
 
 def save_session(session: Session, *, data_dir: Path | str) -> Path:
+    """세션을 원자적으로 저장한다.
+
+    작업이 백그라운드에서 도는 동안 뷰 페이지는 같은 파일을 폴링한다. 그냥
+    덮어쓰면 쓰는 도중에 읽는 쪽이 잘린 JSON을 보게 된다. 같은 디렉터리에
+    임시 파일로 쓰고 os.replace로 바꿔치기하면 읽는 쪽은 항상 온전한 파일을 본다.
+    """
     data_dir = Path(data_dir)
     data_dir.mkdir(parents=True, exist_ok=True)
     path = _session_path(data_dir, session.id)
-    path.write_text(
-        session.model_dump_json(by_alias=True, indent=2), encoding="utf-8"
-    )
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    tmp.write_text(session.model_dump_json(by_alias=True, indent=2), encoding="utf-8")
+    os.replace(tmp, path)
     return path
 
 
@@ -47,6 +54,52 @@ def load_session(sid: str, *, data_dir: Path | str) -> Session:
     if not path.exists():
         raise FileNotFoundError(f"세션 없음: {sid}")
     return Session.model_validate_json(path.read_text(encoding="utf-8"))
+
+
+def list_sessions(*, data_dir: Path | str) -> list[Session]:
+    """읽은 글 목록. 최근에 읽은 것부터. 손상된 파일은 건너뛴다."""
+    directory = Path(data_dir)
+    if not directory.exists():
+        return []
+    sessions: list[Session] = []
+    for path in directory.glob("*.json"):
+        try:
+            sessions.append(Session.model_validate_json(path.read_text(encoding="utf-8")))
+        except ValueError:
+            continue
+    sessions.sort(key=lambda s: s.created_at, reverse=True)
+    return sessions
+
+
+def fail_stale_sessions(*, data_dir: Path | str) -> int:
+    """중단된 작업을 실패로 표시하고 개수를 돌려준다.
+
+    작업은 서버 프로세스 안에서만 돈다. 재시작하면 진행 중이던 세션은 영영
+    끝나지 않는데, 상태가 그대로면 뷰 페이지가 끝없이 폴링한다.
+    """
+    directory = Path(data_dir)
+    if not directory.exists():
+        return 0
+    cleaned = 0
+    for path in sorted(directory.glob("*.json")):
+        try:
+            session = Session.model_validate_json(path.read_text(encoding="utf-8"))
+        except ValueError:
+            continue  # 손상된 파일은 건드리지 않는다
+        changed = False
+        if session.pending:
+            session.status = "failed"
+            session.error = "서버가 재시작되어 중단됐습니다. 다시 시도하세요."
+            changed = True
+        # 번역은 status와 따로 논다. 열어두면 뷰가 끝없이 폴링한다.
+        if session.translation is not None and not session.translation.done:
+            session.translation.done = True
+            session.translation.note = "서버가 재시작되어 번역이 중단됐습니다."
+            changed = True
+        if changed:
+            save_session(session, data_dir=directory)
+            cleaned += 1
+    return cleaned
 
 
 def append_turn(sid: str, turn: ChatTurn, *, data_dir: Path | str) -> Session:
