@@ -17,9 +17,11 @@
 <body>
   <h1>readwell 설정</h1>
   <label for="endpoint">웹서비스 주소</label>
-  <input id="endpoint" type="text" placeholder="http://100.99.117.44:2100">
-  <p class="hint">Tailscale로 hops-dev-2에 닿는 주소. 기본은 http://100.99.117.44:2100.
-    주소를 바꾸면 manifest.json의 host_permissions도 같이 맞춰야 합니다.</p>
+  <input id="endpoint" type="text" placeholder="http://localhost:2100">
+  <p class="hint">기본은 로컬 서버 http://localhost:2100.
+    원격은 http://100.99.117.44:2100 (Tailscale로 hops-dev-2).
+    다른 호스트를 쓰려면 manifest.json의 host_permissions에도 추가해야 합니다.
+    이때 포트는 쓰지 마세요.</p>
   <button id="save">저장</button><span id="saved"></span>
   <script src="options.js"></script>
 </body>

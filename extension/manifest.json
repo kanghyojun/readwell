@@ -4,10 +4,23 @@
   "version": "0.1.0",
   "description": "현재 탭 URL을 readwell 웹서비스로 보내 원문+분석 뷰를 연다.",
   "permissions": ["activeTab", "storage"],
-  "host_permissions": ["http://100.99.117.44:2100/*"],
+  "host_permissions": [
+    "http://localhost/*",
+    "http://127.0.0.1/*",
+    "http://100.99.117.44/*"
+  ],
   "action": {
     "default_popup": "popup.html",
     "default_title": "readwell로 읽기"
   },
-  "options_page": "options.html"
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "readwell@kanghyojun",
+      "strict_min_version": "128.0"
+    }
+  }
 }

@@ -6,6 +6,11 @@
     body { width: 260px; margin: 0; padding: 14px;
       font: 14px/1.5 -apple-system, system-ui, sans-serif; color: #1c1c1a; }
     h1 { font-size: 14px; margin: 0 0 10px; }
+    label { display: block; font-size: 12px; color: #6b6b66; margin-bottom: 4px; }
+    #questions { width: 100%; box-sizing: border-box; padding: 8px; margin-bottom: 8px;
+      font: inherit; font-size: 13px; border: 1px solid #ddd9d0; border-radius: 8px;
+      resize: vertical; }
+    #questions:focus { outline: 2px solid #7a5cff; border-color: transparent; }
     #read { width: 100%; padding: 10px; font: inherit; font-weight: 600;
       color: #fff; background: #7a5cff; border: none; border-radius: 8px; cursor: pointer; }
     #read:disabled { opacity: .5; cursor: wait; }
@@ -16,9 +21,15 @@
 </head>
 <body>
   <h1>readwell</h1>
+  <label for="questions">이 글에서 알고 싶은 것 (한 줄에 하나)</label>
+  <textarea id="questions" rows="3"
+    placeholder="비우면 기본 질문 5개로 읽습니다."></textarea>
   <button id="read">이 페이지 읽기</button>
   <div id="status"></div>
-  <div class="foot"><a href="#" id="opt">서버 주소 설정</a></div>
+  <div class="foot">
+    <a href="#" id="list">읽은 글 목록</a> ·
+    <a href="#" id="opt">서버 주소 설정</a>
+  </div>
   <script src="popup.js"></script>
 </body>
 </html>
