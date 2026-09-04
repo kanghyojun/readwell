@@ -16,6 +16,10 @@ from pydantic import BaseModel, ConfigDict, Field
 SessionStatus = Literal["extracting", "analyzing", "done", "failed"]
 PENDING_STATUSES: frozenset[str] = frozenset({"extracting", "analyzing"})
 
+# 프리뷰 작업의 진행 상태. 세션과 단계 이름이 달라 따로 둔다.
+PreviewStatus = Literal["extracting", "previewing", "done", "failed"]
+PREVIEW_PENDING: frozenset[str] = frozenset({"extracting", "previewing"})
+
 
 class _CamelModel(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
@@ -140,3 +144,60 @@ class Session(_CamelModel):
     @property
     def pending(self) -> bool:
         return self.status in PENDING_STATUSES
+
+
+# --- 프리뷰(읽기 전 판단용) --------------------------------------------------
+
+
+class PreviewQuote(_CamelModel):
+    """저자의 목소리가 드러난 원문 문장. 판단 재료 중 유일하게 LLM을 안 거친 것."""
+
+    text: str
+    locator: str
+    # 섹션 제목은 모델이 아니라 locator에서 끌어온다. 지어낼 여지를 없앤다.
+    section: str | None = None
+
+
+class Preview(_CamelModel):
+    """읽을지 말지 정하는 데 쓰는 성격 카드.
+
+    내용이 아니라 성격을 담는다. 결론을 담으면 원문을 읽을 이유가 사라져서,
+    판단을 돕는 게 아니라 판단을 없앤다.
+    """
+
+    about: str  # 무엇에 관한 글인가. 주제와 범위
+    kind: str  # 튜토리얼 / 주장글 / 경험담 / 레퍼런스 / 뉴스
+    claim_shape: str = Field(alias="claimShape")  # 주장의 모양. 결론 자체가 아니다
+    evidence: str  # 벤치마크 / 저자 경험 / 인용 / 없음
+    audience: str  # 대상 독자와 전제하는 배경지식
+    not_covered: str = Field(alias="notCovered")  # 이 글이 다루지 않는 것
+    quotes: list[PreviewQuote] = Field(default_factory=list)
+
+    @classmethod
+    def json_schema(cls) -> dict:
+        """agent output_format(json_schema)에 넘길 표준 JSON Schema(camelCase)."""
+        return cls.model_json_schema(by_alias=True)
+
+
+class PreviewSession(_CamelModel):
+    """훑어보기 한 건. 읽기로 결정하면 promoted_to에 승격된 세션 id가 남는다.
+
+    세션과 달리 목록에 오르지 않고 TTL이 지나면 지워진다. 판단하고 버릴 물건이다.
+    """
+
+    id: str
+    url: str
+    title: str
+    created_at: str
+    status: PreviewStatus = "extracting"
+    error: str | None = None
+    extraction: Extraction | None = None
+    preview: Preview | None = None
+    # 분량은 세지 않아도 알 수 있다. LLM에 맡기면 틀리게 센다.
+    char_count: int = 0
+    read_minutes: int = 0
+    promoted_to: str | None = None
+
+    @property
+    def pending(self) -> bool:
+        return self.status in PREVIEW_PENDING

@@ -28,6 +28,10 @@ class Config:
     # 번역은 문단마다 호출한다. 문단 수가 그대로 호출 수라 상한을 둔다.
     translate_max_paragraphs: int = 150
     translate_concurrency: int = 6
+    # 프리뷰는 한 번에 본문을 다 넣는다. 너무 길면 골격만 넣는다.
+    preview_max_chars: int = 40000
+    # 판단하고 버릴 물건이라 오래 두지 않는다.
+    preview_ttl_days: int = 7
 
     @classmethod
     def from_env(cls) -> Config:
@@ -45,4 +49,8 @@ class Config:
             translate_concurrency=int(
                 os.environ.get("READWELL_TRANSLATE_CONCURRENCY", "6")
             ),
+            preview_max_chars=int(
+                os.environ.get("READWELL_PREVIEW_MAX_CHARS", "40000")
+            ),
+            preview_ttl_days=int(os.environ.get("READWELL_PREVIEW_TTL_DAYS", "7")),
         )

@@ -9,12 +9,13 @@ AI는 Claude Agent SDK(구독 인증)로 돌린다.
 
 ```
 [확장(Mac)] ──Tailscale HTTP──▶ [웹서비스(Linux, hops-dev-2)]
-   트리거                          본문 추출 → Agent SDK 방법론 → 웹뷰 + vault md
+ 훑어보기 / 바로 읽기              본문 추출 → Agent SDK 방법론 → 웹뷰 + vault md
                                             │
-                                   [웹뷰(브라우저)] 원문 + 분석 2단, 대화형
+        [프리뷰] 읽을지 말지 판단 ──제대로 읽기──▶ [웹뷰] 원문 + 분석 2단, 대화형
 ```
 
 - **확장(Mac)**: 현재 탭 URL을 웹서비스로 POST, 결과 뷰를 새 탭으로 연다.
+  버튼이 둘이다. **먼저 훑어보기**는 판단용 프리뷰로, **이 페이지 읽기**는 바로 본 읽기로 간다.
 - **웹서비스(Linux)**: 본문 추출(trafilatura/Jina) → Agent SDK 방법론 → vault에 md 저장 + 웹뷰 서빙.
 - **웹뷰**: 왼쪽 원문, 오른쪽 분석(색인·질문·비판·매핑). 앵커 클릭하면 원문으로 점프. 추가 질문 가능.
 - **목록(`/`)**: 지금까지 읽은 글이 최근 순으로. 제목을 누르면 뷰로 가고,
@@ -23,6 +24,31 @@ AI는 Claude Agent SDK(구독 인증)로 돌린다.
 읽기 요청은 오래 걸린다(수십 초). `POST /read`는 세션만 만들고 뷰 URL을 즉시 돌려주며,
 추출·분석·번역은 서버 백그라운드에서 이어진다. 뷰 페이지가 상태를 폴링해 끝난 것부터
 채운다. 확장 팝업은 닫히면 진행 중인 `fetch`가 죽기 때문에 이 구조가 필요하다.
+
+### 읽을지 말지 먼저 보기
+
+읽기로 이미 정한 글은 바로 읽으면 된다. 아직 안 정한 글은 **훑어보기**로 먼저 본다.
+
+```
+POST /preview  {"url": "..."}   → 새 탭 GET /preview/{id}
+     [제대로 읽기]              → POST /preview/{id}/read → /view/{sid}
+```
+
+프리뷰는 **내용을 주지 않고 성격을 준다.** 무엇에 관한 글인지, 어떤 종류의 주장을 하는지,
+근거가 뭔지, 누구를 위한 글인지, 무엇을 다루지 **않는지**, 분량과 예상 읽기 시간.
+그리고 저자의 목소리가 가장 잘 드러난 원문 문장 두어 개를 그대로 붙인다.
+
+결론까지 알려주면 원문을 읽을 이유가 사라진다. 판단을 돕는 게 아니라 판단을 없앤다.
+문헌 요약 용어로는 원문을 대체하는 informative 요약이 아니라 원문을 가리키는
+indicative 요약이다. 배경은 [설계 문서](./docs/2026-09-04-readwell-preview-design.md)에 있다.
+
+- 프리뷰 페이지에는 **원문을 싣지 않는다.** 실으면 판단하러 왔다가 그냥 읽게 된다.
+- 인용은 원문에 실제로 있는지 대조한다. 지어낸 문장은 버리고, 위치만 틀렸으면 텍스트만 남긴다.
+- 훑어보기는 질문을 받지 않는다. 판단하기 전에 질문을 짜는 건 번거로움이다.
+- 승격하면 프리뷰가 뽑아둔 원문을 그대로 물려받아 **추출을 다시 하지 않는다.**
+  질문은 프리셋 5개다. 버튼 하나로 끝나야 한다.
+- 프리뷰는 읽은 글 목록에 오르지 않는다. `data/previews/`에 따로 쌓이고 7일 뒤 지워진다.
+  판단하고 버린 글이 목록을 채우면 목록의 뜻이 흐려진다.
 
 ### 읽기 전 질문
 
@@ -70,6 +96,7 @@ POST /read  {"url": "...", "questions": ["SIMD를 언제 써야 하나?", "성�
 ## 문서
 
 - [docs/methodology.md](./docs/methodology.md) — AI로 긴 글 잘 읽기: 방법론
+- [docs/2026-09-04-readwell-preview-design.md](./docs/2026-09-04-readwell-preview-design.md) — 읽기 전 판단용 프리뷰 설계
 - [docs/2026-07-11-readwell-design.md](./docs/2026-07-11-readwell-design.md) — 설계 스펙
 - [docs/2026-07-11-readwell-plan.md](./docs/2026-07-11-readwell-plan.md) — 구현 계획·결정·진행 로그
 
@@ -77,7 +104,7 @@ POST /read  {"url": "...", "questions": ["SIMD를 언제 써야 하나?", "성�
 
 ```bash
 uv sync                 # 의존성 설치
-uv run pytest -q        # 테스트 (102개)
+uv run pytest -q        # 테스트 (166개)
 
 # 웹서비스 기동 (포트 2100). base_url은 확장이 뷰를 새 탭으로 열 때 쓴다.
 READWELL_BASE_URL="http://100.99.117.44:2100" \
@@ -96,6 +123,8 @@ READWELL_BASE_URL="http://100.99.117.44:2100" \
 | `READWELL_MODEL` | (CLI 기본) | agent 모델 오버라이드 |
 | `READWELL_TRANSLATE_MAX_PARAGRAPHS` | 150 | 이 수를 넘으면 번역을 건너뛴다 |
 | `READWELL_TRANSLATE_CONCURRENCY` | 6 | 번역 동시 호출 수 |
+| `READWELL_PREVIEW_MAX_CHARS` | 40000 | 넘으면 프리뷰에 전문 대신 골격만 넣는다 |
+| `READWELL_PREVIEW_TTL_DAYS` | 7 | 이 기간 지난 프리뷰를 기동 시 지운다 |
 
 md를 다른 곳에 쌓으려면 `READWELL_VAULT_DIR`을 바꿔 기동한다. 경로의 `~`는 펴진다.
 
@@ -112,6 +141,6 @@ READWELL_VAULT_DIR="~/Documents/obsidian/읽은글" \
 v1 구현 완료. 테스트 42개 통과. 실제 URL(paulgraham.com/todo.html)로 추출→분석→저장→뷰까지
 end-to-end 검증. agent 구조화 출력(json_schema)과 locator 실재성 검증 동작 확인.
 
-- 웹서비스(Linux): extractor / reader / store / viewserver + 웹뷰 — 동작.
+- 웹서비스(Linux): extractor / reader / preview / store / viewserver + 웹뷰 — 동작.
 - 브라우저 확장(MV3): 코드 완성. 로드·구동은 Mac에서(headless라 여기선 미검증).
 - 범위 밖(v2): 확장 DOM 긁기(페이월), Tauri, 다중 사용자.

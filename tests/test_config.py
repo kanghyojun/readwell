@@ -24,3 +24,19 @@ def test_data_dir_expands_home(monkeypatch):
 def test_absolute_vault_dir_is_left_alone(monkeypatch):
     monkeypatch.setenv("READWELL_VAULT_DIR", "/tmp/vault")
     assert Config.from_env().vault_dir == Path("/tmp/vault")
+
+
+def test_preview_limits_come_from_env(monkeypatch):
+    monkeypatch.setenv("READWELL_PREVIEW_MAX_CHARS", "12000")
+    monkeypatch.setenv("READWELL_PREVIEW_TTL_DAYS", "3")
+    cfg = Config.from_env()
+    assert cfg.preview_max_chars == 12000
+    assert cfg.preview_ttl_days == 3
+
+
+def test_preview_limits_have_defaults(monkeypatch):
+    monkeypatch.delenv("READWELL_PREVIEW_MAX_CHARS", raising=False)
+    monkeypatch.delenv("READWELL_PREVIEW_TTL_DAYS", raising=False)
+    cfg = Config.from_env()
+    assert cfg.preview_max_chars == 40000
+    assert cfg.preview_ttl_days == 7

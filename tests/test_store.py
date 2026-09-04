@@ -1,11 +1,24 @@
-"""store 테스트: 세션 json 왕복, 대화 누적, vault md 렌더."""
+"""store 테스트: 세션 json 왕복, 대화 누적, vault md 렌더, 프리뷰 저장."""
 
-from app.models import Analysis, ChatTurn, Extraction, Paragraph, Section, Session
+from app.models import (
+    Analysis,
+    ChatTurn,
+    Extraction,
+    Paragraph,
+    Preview,
+    PreviewSession,
+    Section,
+    Session,
+)
 from app.store import (
     append_turn,
+    fail_stale_previews,
     list_sessions,
+    load_preview,
     load_session,
+    purge_previews,
     render_markdown,
+    save_preview,
     save_session,
     slugify_title,
     write_vault_md,
@@ -141,3 +154,102 @@ def test_list_sessions_skips_corrupt_files(tmp_path):
 
 def test_list_sessions_empty_when_no_data_dir(tmp_path):
     assert list_sessions(data_dir=tmp_path / "없음") == []
+
+
+# --- 프리뷰 저장 -------------------------------------------------------------
+
+
+def _preview_session(pid: str = "p1", *, created_at: str = "2026-09-04T10:00:00.000") -> PreviewSession:
+    return PreviewSession(
+        id=pid,
+        url="https://example.com/post",
+        title="긴 글 잘 읽기 실험",
+        created_at=created_at,
+        status="done",
+        preview=Preview.model_validate(
+            {
+                "about": "원문 회귀 색인에 관한 글이다.",
+                "kind": "주장글",
+                "claimShape": "요약보다 색인이 낫다고 주장한다.",
+                "evidence": "저자 경험",
+                "audience": "긴 글을 많이 읽는 사람",
+                "notCovered": "구현 세부는 다루지 않는다.",
+                "quotes": [{"text": "본문.", "locator": "s1-p1"}],
+            }
+        ),
+        char_count=3,
+        read_minutes=1,
+    )
+
+
+def test_preview_save_and_load_roundtrip(tmp_path):
+    save_preview(_preview_session(), data_dir=tmp_path)
+    loaded = load_preview("p1", data_dir=tmp_path)
+    assert loaded.title == "긴 글 잘 읽기 실험"
+    assert loaded.preview.claim_shape == "요약보다 색인이 낫다고 주장한다."
+    assert loaded.preview.quotes[0].locator == "s1-p1"
+
+
+def test_load_missing_preview_raises(tmp_path):
+    save_preview(_preview_session(), data_dir=tmp_path)
+    try:
+        load_preview("nope", data_dir=tmp_path)
+    except FileNotFoundError:
+        return
+    raise AssertionError("FileNotFoundError가 나야 한다")
+
+
+def test_previews_do_not_appear_in_session_list(tmp_path):
+    """프리뷰는 읽은 글이 아니다. 목록에 오르면 목록의 뜻이 흐려진다."""
+    save_preview(_preview_session(), data_dir=tmp_path)
+    save_session(_session("real1"), data_dir=tmp_path)
+    assert [s.id for s in list_sessions(data_dir=tmp_path)] == ["real1"]
+
+
+def test_purge_removes_previews_past_ttl(tmp_path):
+    import datetime
+
+    now = datetime.datetime.now()
+    old = (now - datetime.timedelta(days=30)).isoformat(timespec="milliseconds")
+    fresh = (now - datetime.timedelta(days=1)).isoformat(timespec="milliseconds")
+    save_preview(_preview_session("old1", created_at=old), data_dir=tmp_path)
+    save_preview(_preview_session("new1", created_at=fresh), data_dir=tmp_path)
+
+    assert purge_previews(data_dir=tmp_path, older_than_days=7) == 1
+    assert load_preview("new1", data_dir=tmp_path).id == "new1"
+    try:
+        load_preview("old1", data_dir=tmp_path)
+    except FileNotFoundError:
+        return
+    raise AssertionError("오래된 프리뷰가 남아 있다")
+
+
+def test_purge_removes_promoted_previews_too(tmp_path):
+    """승격했어도 TTL이 지나면 지운다. 뷰가 이미 원문을 갖고 있다."""
+    import datetime
+
+    old = (datetime.datetime.now() - datetime.timedelta(days=30)).isoformat(
+        timespec="milliseconds"
+    )
+    session = _preview_session("old1", created_at=old)
+    session.promoted_to = "abc123"
+    save_preview(session, data_dir=tmp_path)
+    assert purge_previews(data_dir=tmp_path, older_than_days=7) == 1
+
+
+def test_fail_stale_previews_marks_interrupted_ones(tmp_path):
+    """서버가 재시작되면 진행 중이던 프리뷰는 영영 안 끝난다. 페이지가 끝없이 폴링한다."""
+    stale = _preview_session("mid1")
+    stale.status = "previewing"
+    save_preview(stale, data_dir=tmp_path)
+
+    assert fail_stale_previews(data_dir=tmp_path) == 1
+    reloaded = load_preview("mid1", data_dir=tmp_path)
+    assert reloaded.status == "failed"
+    assert "재시작" in reloaded.error
+
+
+def test_fail_stale_previews_leaves_done_ones_alone(tmp_path):
+    save_preview(_preview_session("done1"), data_dir=tmp_path)
+    assert fail_stale_previews(data_dir=tmp_path) == 0
+    assert load_preview("done1", data_dir=tmp_path).status == "done"

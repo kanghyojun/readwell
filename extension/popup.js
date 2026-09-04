@@ -10,6 +10,7 @@ async function getEndpoint() {
 }
 
 const readBtn = document.getElementById("read");
+const skimBtn = document.getElementById("skim");
 const statusEl = document.getElementById("status");
 const questionsEl = document.getElementById("questions");
 
@@ -21,37 +22,48 @@ function readQuestions() {
     .filter((q) => q.length > 0);
 }
 
-readBtn.addEventListener("click", async () => {
-  readBtn.disabled = true;
+// 서버가 돌려준 절대 URL이면 그대로, 아니면 endpoint로 조립한다.
+function resolveUrl(endpoint, url, path, id) {
+  return url && /^https?:\/\//.test(url) ? url : endpoint + path + id;
+}
+
+// 두 흐름이 하는 일은 같다. 어디로 POST하고 어느 URL을 여느냐만 다르다.
+async function openIn(button, path, body, urlField, viewPath) {
+  button.disabled = true;
   statusEl.textContent = "여는 중…";
   try {
     const [tab] = await api.tabs.query({ active: true, currentWindow: true });
     if (!tab || !tab.url) throw new Error("탭 URL을 못 읽음");
     const endpoint = await getEndpoint();
 
-    const res = await fetch(endpoint + "/read", {
+    const res = await fetch(endpoint + path, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url: tab.url, questions: readQuestions() }),
+      body: JSON.stringify(Object.assign({ url: tab.url }, body)),
     });
     if (!res.ok) throw new Error("HTTP " + res.status);
     const data = await res.json();
 
-    // viewUrl이 절대경로면 그대로, 아니면 endpoint로 조립.
-    const viewUrl =
-      data.viewUrl && /^https?:\/\//.test(data.viewUrl)
-        ? data.viewUrl
-        : endpoint + "/view/" + data.id;
-
-    // 추출·분석은 서버가 이어서 한다. 진행 상황은 새 탭에서 보인다.
-    await api.tabs.create({ url: viewUrl });
+    // 작업은 서버가 이어서 한다. 진행 상황은 새 탭에서 보인다.
+    await api.tabs.create({
+      url: resolveUrl(endpoint, data[urlField], viewPath, data.id),
+    });
     statusEl.textContent = "새 탭에서 열었어요.";
   } catch (e) {
     statusEl.textContent = "실패: " + (e && e.message ? e.message : e);
   } finally {
-    readBtn.disabled = false;
+    button.disabled = false;
   }
-});
+}
+
+// 훑어보기는 질문을 보내지 않는다. 판단하기 전에 질문을 짜는 건 번거로움이다.
+skimBtn.addEventListener("click", () =>
+  openIn(skimBtn, "/preview", {}, "previewUrl", "/preview/")
+);
+
+readBtn.addEventListener("click", () =>
+  openIn(readBtn, "/read", { questions: readQuestions() }, "viewUrl", "/view/")
+);
 
 document.getElementById("list").addEventListener("click", async (e) => {
   e.preventDefault();

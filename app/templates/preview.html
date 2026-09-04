@@ -1,0 +1,69 @@
+{# 읽을지 말지 판단하는 화면. 원문은 싣지 않는다. 실으면 판단하러 왔다가 그냥
+   읽게 되고, 그러면 흐름을 둘로 나눈 값어치가 사라진다. #}
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ session.title }} · 훑어보기</title>
+  <link rel="stylesheet" href="/static/view.css">
+</head>
+<body class="preview-page" data-status="{{ session.status }}">
+  <header class="topbar">
+    <div class="title">
+      <strong>{{ session.title }}</strong>
+      <a class="src" href="{{ session.url }}" target="_blank" rel="noopener">원문 ↗</a>
+    </div>
+    <div class="meta">훑어보기</div>
+  </header>
+
+  <main class="preview-card">
+    {% if session.status == "failed" %}
+      <p class="warn failed">{{ session.error }}</p>
+      <p class="empty">이 글은 훑어볼 수 없습니다.
+        <a class="src" href="{{ session.url }}" target="_blank" rel="noopener">원문에서 직접 보세요 ↗</a></p>
+
+    {% elif preview %}
+      <div class="badges">
+        <span class="badge kind">{{ preview.kind }}</span>
+        <span class="badge">{{ "{:,}".format(session.char_count) }}자</span>
+        <span class="badge">약 {{ session.read_minutes }}분</span>
+      </div>
+
+      <dl class="facets">
+        <dt>무엇에 관한 글인가</dt><dd>{{ preview.about }}</dd>
+        <dt>어떤 주장을 하는가</dt><dd>{{ preview.claim_shape }}</dd>
+        <dt>근거</dt><dd>{{ preview.evidence }}</dd>
+        <dt>누구를 위한 글인가</dt><dd>{{ preview.audience }}</dd>
+        <dt>다루지 않는 것</dt><dd>{{ preview.not_covered }}</dd>
+      </dl>
+
+      {% if preview.quotes %}
+      {# 판단 재료 중 유일하게 LLM을 안 거친 것. 문체와 밀도를 직접 본다. #}
+      <section class="quotes">
+        <h2>저자의 문장</h2>
+        {% for q in preview.quotes %}
+        <blockquote>
+          <p>{{ q.text }}</p>
+          {% if q.section %}<cite>「{{ q.section }}」 섹션</cite>{% endif %}
+        </blockquote>
+        {% endfor %}
+      </section>
+      {% endif %}
+
+      <div class="decide">
+        <button id="promote" type="button">제대로 읽기</button>
+        <span class="hint">기본 질문 5개로 분석하고, 필요하면 번역까지 붙입니다.</span>
+      </div>
+
+    {% else %}
+      <p class="pending"><span class="spinner"></span>훑어보는 중…</p>
+    {% endif %}
+  </main>
+
+  <script>
+    window.PREVIEW_ID = "{{ session.id }}";
+  </script>
+  <script src="/static/preview.js"></script>
+</body>
+</html>

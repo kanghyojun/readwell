@@ -185,3 +185,43 @@ body.tr-mode-target .para-tr {
   margin-right: .5rem; color: var(--muted); text-decoration: none; font-size: 1.05rem;
 }
 .to-index:hover { color: var(--accent); }
+
+/* --- 훑어보기: 읽을지 말지 판단하는 화면 ---------------------------------- */
+/* 한 화면에 들어와야 한다. 스크롤을 요구하면 판단이 아니라 읽기가 된다. */
+
+.preview-card { max-width: 46rem; margin: 0 auto; padding: 1.8rem 1.4rem 4rem; }
+
+.badges { display: flex; gap: .4rem; flex-wrap: wrap; margin-bottom: 1.6rem; }
+.badge {
+  border: 1px solid var(--line); color: var(--muted);
+  padding: .2rem .6rem; border-radius: 999px; font-size: .8rem;
+}
+.badge.kind { color: #fff; background: var(--accent); border-color: var(--accent); }
+
+.facets { margin: 0; }
+.facets dt {
+  color: var(--muted); font-size: .78rem; letter-spacing: .02em;
+  margin-top: 1.2rem;
+}
+.facets dt:first-child { margin-top: 0; }
+.facets dd { margin: .25rem 0 0; }
+
+.quotes { margin-top: 2.2rem; }
+.quotes h2 { font-size: .78rem; color: var(--muted); font-weight: 400; margin: 0 0 .6rem; }
+.quotes blockquote {
+  margin: 0 0 1rem; padding: .7rem 1rem;
+  background: var(--panel-bg); border-left: 2px solid var(--accent); border-radius: 0 6px 6px 0;
+}
+.quotes blockquote p { margin: 0; }
+.quotes cite {
+  display: block; margin-top: .35rem;
+  color: var(--muted); font-size: .78rem; font-style: normal;
+}
+
+.decide { margin-top: 2.4rem; display: flex; align-items: center; gap: .9rem; flex-wrap: wrap; }
+.decide button {
+  padding: .6rem 1.4rem; font: inherit; font-weight: 600;
+  color: #fff; background: var(--accent); border: none; border-radius: 8px; cursor: pointer;
+}
+.decide button:disabled { opacity: .5; cursor: wait; }
+.decide .hint { color: var(--muted); font-size: .8rem; }

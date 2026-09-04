@@ -36,8 +36,9 @@ def test_popup_splits_questions_by_line(popup_js: str) -> None:
     assert "split(" in popup_js
 
 
-def test_popup_sends_questions_field(popup_js: str) -> None:
-    assert "questions" in popup_js.split("JSON.stringify")[1][:120]
+def test_read_sends_the_questions_field(popup_js: str) -> None:
+    read_handler = popup_js.split("readBtn.addEventListener")[1].split(");")[0]
+    assert "questions" in read_handler
 
 
 def test_popup_links_to_the_reading_list(popup_html: str) -> None:
@@ -46,3 +47,25 @@ def test_popup_links_to_the_reading_list(popup_html: str) -> None:
 
 def test_popup_opens_the_reading_list_on_the_server(popup_js: str) -> None:
     assert 'getElementById("list")' in popup_js
+
+
+# --- 훑어보기 버튼 -----------------------------------------------------------
+
+
+def test_popup_has_a_skim_button(popup_html: str) -> None:
+    assert 'id="skim"' in popup_html
+
+
+def test_skim_posts_to_the_preview_endpoint(popup_js: str) -> None:
+    assert '"/preview"' in popup_js
+
+
+def test_skim_does_not_send_questions(popup_js: str) -> None:
+    """훑어보기는 질문을 받지 않는다. 판단하기 전에 질문을 짜는 건 번거로움이다."""
+    skim_handler = popup_js.split("skimBtn.addEventListener")[1].split(");")[0]
+    assert '"/preview"' in skim_handler
+    assert "questions" not in skim_handler
+
+
+def test_skim_opens_the_preview_url_in_a_tab(popup_js: str) -> None:
+    assert "previewUrl" in popup_js

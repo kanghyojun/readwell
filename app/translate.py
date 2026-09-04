@@ -23,7 +23,7 @@ _HANGUL_START, _HANGUL_END = 0xAC00, 0xD7A3
 _MIN_LETTERS = 10
 
 # 한글이 이 비율 미만이면 비한국어 글로 본다.
-_KOREAN_THRESHOLD = 0.1
+KOREAN_THRESHOLD = 0.1
 
 TRANSLATE_SCHEMA: dict = {
     "type": "object",
@@ -54,7 +54,7 @@ def needs_translation(extraction: Extraction) -> bool:
     text = document_text(extraction)
     if sum(1 for ch in text if ch.isalpha()) < _MIN_LETTERS:
         return False
-    return korean_ratio(text) < _KOREAN_THRESHOLD
+    return korean_ratio(text) < KOREAN_THRESHOLD
 
 
 def build_translate_prompt(title: str, text: str) -> str:

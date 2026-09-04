@@ -5,6 +5,12 @@
 - GET  /view/{id}/status 진행 상태. 뷰 페이지가 폴링한다.
 - POST /view/{id}/ask   {question, kind} → 같은 원문 맥락으로 추가 질문
 
+읽을지 말지 먼저 보는 흐름은 따로 있다.
+
+- POST /preview         {url} → 프리뷰를 만들고 프리뷰 URL을 즉시 반환.
+- GET  /preview/{id}    성격 카드. 승격된 프리뷰면 뷰로 302.
+- POST /preview/{id}/read 프리뷰가 뽑아둔 원문을 물려 세션을 만든다(재추출 없음).
+
 읽기는 수십 초 걸린다. 확장 팝업은 닫히면 문서가 파괴돼 진행 중인 fetch도 죽으므로,
 요청을 받는 즉시 id를 돌려주고 실제 작업은 서버가 이어서 한다.
 """
@@ -21,14 +27,14 @@ from urllib.parse import urlparse
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
 from app.config import Config
 from app.extractor import ExtractionError, extract
-from app.models import Extraction, Session, Translation
+from app.models import Extraction, PreviewSession, Session, Translation
 from app.reader import (
     AgentRunner,
     ClaudeAgentRunner,
@@ -37,11 +43,16 @@ from app.reader import (
     ask,
     check_locators,
 )
+from app.preview import PreviewError, estimate_reading, make_preview
 from app.store import (
     append_turn,
+    fail_stale_previews,
     fail_stale_sessions,
     list_sessions,
+    load_preview,
     load_session,
+    purge_previews,
+    save_preview,
     save_session,
     write_vault_md,
 )
@@ -61,6 +72,12 @@ class ReadRequest(BaseModel):
 class AskRequest(BaseModel):
     question: str
     kind: str = "ask"
+
+
+class PreviewRequest(BaseModel):
+    """훑어보기는 질문을 받지 않는다. 판단하기 전에 질문을 짜는 건 번거로움이다."""
+
+    url: str
 
 
 def _new_id() -> str:
@@ -88,6 +105,10 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         fail_stale_sessions(data_dir=config.data_dir)
+        fail_stale_previews(data_dir=config.data_dir)
+        purge_previews(
+            data_dir=config.data_dir, older_than_days=config.preview_ttl_days
+        )
         yield
 
     app = FastAPI(title="readwell", lifespan=lifespan)
@@ -193,11 +214,67 @@ def create_app(
             extraction=extraction,
         )
 
-        # 분석과 번역은 서로 독립이다. 나란히 돌리고 각자 끝나는 대로 저장한다.
+        await _analyze_and_translate(sid, extraction, questions)
+
+    async def _analyze_and_translate(
+        sid: str, extraction: Extraction, questions: list[str]
+    ) -> None:
+        """분석과 번역은 서로 독립이다. 나란히 돌리고 각자 끝나는 대로 저장한다.
+
+        추출 없이 여기부터 시작하는 경로가 있다. 프리뷰에서 승격할 때다.
+        """
         await asyncio.gather(
             _analyze_step(sid, extraction, questions),
             _translate_step(sid, extraction),
         )
+
+    def _spawn(coro) -> None:
+        """태스크 참조를 붙들지 않으면 GC가 도중에 걷어갈 수 있다."""
+        task = asyncio.create_task(coro)
+        app.state.tasks.add(task)
+        task.add_done_callback(app.state.tasks.discard)
+
+    async def _update_preview(pid: str, **fields) -> PreviewSession:
+        async with write_lock:
+            session = load_preview(pid, data_dir=config.data_dir)
+            for key, value in fields.items():
+                setattr(session, key, value)
+            save_preview(session, data_dir=config.data_dir)
+            return session
+
+    async def _run_preview(pid: str, url: str) -> None:
+        """추출 → 성격 카드. 판단용이라 분석도 번역도 돌리지 않는다."""
+        try:
+            extraction: Extraction = await run_in_threadpool(app.state.extractor, url)
+        except ExtractionError as e:
+            await _update_preview(pid, status="failed", error=str(e))
+            return
+        except Exception as e:
+            await _update_preview(pid, status="failed", error=f"추출 실패: {e}")
+            return
+
+        chars, minutes = estimate_reading(extraction)
+        await _update_preview(
+            pid,
+            status="previewing",
+            url=extraction.url,
+            title=extraction.title,
+            extraction=extraction,
+            char_count=chars,
+            read_minutes=minutes,
+        )
+
+        try:
+            card = await make_preview(
+                extraction,
+                agent=app.state.agent,
+                max_chars=config.preview_max_chars,
+            )
+        except PreviewError as e:
+            # 분량과 제목만으로도 판단이 반쯤은 된다. 실패로 두되 있는 건 보여준다.
+            await _update_preview(pid, status="failed", error=str(e))
+            return
+        await _update_preview(pid, status="done", preview=card)
 
     @app.get("/", response_class=HTMLResponse)
     def index(request: Request):
@@ -239,10 +316,7 @@ def create_app(
             data_dir=cfg.data_dir,
         )
 
-        # 태스크 참조를 붙들지 않으면 GC가 도중에 걷어갈 수 있다.
-        task = asyncio.create_task(_run(sid, body.url, questions))
-        request.app.state.tasks.add(task)
-        task.add_done_callback(request.app.state.tasks.discard)
+        _spawn(_run(sid, body.url, questions))
 
         return {
             "id": sid,
@@ -297,9 +371,7 @@ def create_app(
 
         # 응답하기 전에 열어둬야 뷰 폴링이 "아직 안 끝났다"를 본다.
         await _update(sid, translation=Translation())
-        task = asyncio.create_task(_translate_step(sid, session.extraction))
-        request.app.state.tasks.add(task)
-        task.add_done_callback(request.app.state.tasks.discard)
+        _spawn(_translate_step(sid, session.extraction))
         return {"status": "translating"}
 
     @app.get("/view/{sid}", response_class=HTMLResponse)
@@ -329,6 +401,82 @@ def create_app(
                 ),
             },
         )
+
+    # --- 훑어보기 -----------------------------------------------------------
+
+    def _get_preview(pid: str) -> PreviewSession:
+        try:
+            return load_preview(pid, data_dir=config.data_dir)
+        except FileNotFoundError as e:
+            raise HTTPException(status_code=404, detail="프리뷰 없음") from e
+
+    @app.post("/preview")
+    async def preview_create(body: PreviewRequest):
+        pid = _new_id()
+        save_preview(
+            PreviewSession(
+                id=pid,
+                url=body.url,
+                title=body.url,  # 추출 전이라 제목을 모른다
+                created_at=_now_iso(),
+                status="extracting",
+            ),
+            data_dir=config.data_dir,
+        )
+        _spawn(_run_preview(pid, body.url))
+        return {
+            "id": pid,
+            "previewUrl": f"{config.base_url}/preview/{pid}",
+            "status": "extracting",
+        }
+
+    @app.get("/preview/{pid}/status")
+    def preview_status(pid: str):
+        session = _get_preview(pid)
+        return {"status": session.status, "error": session.error}
+
+    @app.get("/preview/{pid}", response_class=HTMLResponse)
+    def preview_page(pid: str, request: Request):
+        session = _get_preview(pid)
+        # 이미 읽기로 한 글이다. 판단 화면을 다시 보여줄 이유가 없다.
+        if session.promoted_to:
+            return RedirectResponse(f"/view/{session.promoted_to}", status_code=302)
+        return _templates.TemplateResponse(
+            request, "preview.html", {"session": session, "preview": session.preview}
+        )
+
+    @app.post("/preview/{pid}/read")
+    async def preview_promote(pid: str):
+        """프리뷰가 뽑아둔 원문을 물려 세션을 만든다. 추출을 다시 하지 않는다."""
+        session = _get_preview(pid)
+        if session.promoted_to:
+            # 버튼을 두 번 눌러도 세션이 둘 생기면 안 된다.
+            return {
+                "id": session.promoted_to,
+                "viewUrl": f"{config.base_url}/view/{session.promoted_to}",
+            }
+        if session.status != "done" or session.extraction is None:
+            raise HTTPException(
+                status_code=409, detail="프리뷰가 아직 끝나지 않았습니다."
+            )
+
+        sid = _new_id()
+        # 원문을 채워서 먼저 저장한다. 그래야 뷰가 열리자마자 원문을 보여준다.
+        save_session(
+            Session(
+                id=sid,
+                url=session.url,
+                title=session.title,
+                created_at=_now_iso(),
+                status="analyzing",
+                extraction=session.extraction,
+            ),
+            data_dir=config.data_dir,
+        )
+        await _update_preview(pid, promoted_to=sid)
+        # 질문은 비운다. 비면 reader가 프리셋 5개로 읽는다.
+        _spawn(_analyze_and_translate(sid, session.extraction, []))
+        return {"id": sid, "viewUrl": f"{config.base_url}/view/{sid}"}
 
     @app.post("/view/{sid}/ask")
     async def ask_route(sid: str, body: AskRequest, request: Request):
