@@ -4,6 +4,7 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 data/*.json
+data/previews/
 !data/.gitkeep
 *.egg-info/
 uv.lock
