@@ -18,10 +18,17 @@ from app.store import load_session
 
 _ANALYSIS = {
     "scan": "s",
-    "gist": [],
-    "claims": [],
-    "questions": [],
-    "critique": [],
+    "gist": [{"section": "x", "oneLine": "y", "locator": "s1-p1"}],
+    "claims": [{"claim": "c", "evidence": "e", "locator": "s1-p1"}],
+    "questions": [{"q": "q", "answerQuote": "a", "locator": "s1-p1"}],
+    "critique": [
+        {
+            "hiddenPremise": "h",
+            "weakEvidence": "w",
+            "missingCounterexample": "m",
+            "locator": "s1-p1",
+        }
+    ],
 }
 
 

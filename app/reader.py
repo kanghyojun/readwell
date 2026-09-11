@@ -15,7 +15,7 @@ from typing import Protocol
 
 from pydantic import ValidationError
 
-from app.models import Analysis, ChatTurn, Extraction, Session
+from app.models import ANALYSIS_SECTIONS, Analysis, ChatTurn, Extraction, Session
 
 # 미결 2번 결정: 방법론 "질문 기반 추출" 기반 프리셋 5개.
 PRESET_QUESTIONS: list[str] = [
@@ -197,9 +197,15 @@ async def analyze(
     if isinstance(raw.get("scan"), str):
         raw = {**raw, "scan": strip_prompt_echo(raw["scan"])}
     try:
-        return Analysis.model_validate(raw)
+        analysis = Analysis.model_validate(raw)
     except ValidationError as e:
         raise ReaderError(f"분석 스키마 검증 실패: {e}") from e
+    # 스키마로 막아도 러너가 검사를 건너뛰면 빈 목록이 온다. 그대로 저장하면
+    # 오류 없이 탭만 비어서 실패인 줄도 모른다.
+    empty = [name for name in ANALYSIS_SECTIONS if not getattr(analysis, name)]
+    if empty:
+        raise ReaderError(f"분석이 일부만 왔습니다. 비어 있는 항목: {', '.join(empty)}")
+    return analysis
 
 
 async def ask(

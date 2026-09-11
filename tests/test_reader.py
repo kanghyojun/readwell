@@ -63,7 +63,14 @@ _VALID_ANALYSIS = {
     "gist": [{"section": "도입", "oneLine": "요약은 평면화", "locator": "s1-p1"}],
     "claims": [{"claim": "요약 위험", "evidence": "평면화", "locator": "s1-p1"}],
     "questions": [{"q": "핵심 주장은?", "answerQuote": "요약은 원문을 평면화한다.", "locator": "s1-p1"}],
-    "critique": [],
+    "critique": [
+        {
+            "hiddenPremise": "요약은 늘 해롭다",
+            "weakEvidence": "사례 하나",
+            "missingCounterexample": "짧은 글",
+            "locator": "s1-p2",
+        }
+    ],
 }
 
 
@@ -171,6 +178,21 @@ async def test_analyze_passes_my_questions_to_prompt():
 
 async def test_analyze_raises_reader_error_on_invalid_schema():
     fake = FakeAgent({"gist": []})  # 필수 scan 누락
+    with pytest.raises(ReaderError):
+        await analyze(_ext(), agent=fake)
+
+
+@pytest.mark.parametrize("field", ["gist", "claims", "questions", "critique"])
+async def test_analyze_rejects_empty_section(field):
+    """빈 목록을 조용히 저장하면 탭만 빈 채로 끝나서 실패인 줄도 모른다."""
+    fake = FakeAgent({**_VALID_ANALYSIS, field: []})
+    with pytest.raises(ReaderError, match=field):
+        await analyze(_ext(), agent=fake)
+
+
+async def test_analyze_rejects_scan_only():
+    """실제로 모델이 StructuredOutput에 scan 하나만 담아 끝낸 적이 있다."""
+    fake = FakeAgent({"scan": "개요만 있다."})
     with pytest.raises(ReaderError):
         await analyze(_ext(), agent=fake)
 

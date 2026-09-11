@@ -26,11 +26,18 @@ _VALID_PREVIEW = {
 _VALID_ANALYSIS = {
     "scan": "원문 회귀 색인에 관한 글.",
     "gist": [{"section": "도입", "oneLine": "요약은 평면화", "locator": "s1-p1"}],
-    "claims": [],
+    "claims": [{"claim": "요약 위험", "evidence": "평면화", "locator": "s1-p1"}],
     "questions": [
         {"q": "핵심 주장은?", "answerQuote": "요약은 원문을 평면화한다.", "locator": "s1-p1"}
     ],
-    "critique": [],
+    "critique": [
+        {
+            "hiddenPremise": "요약은 늘 해롭다",
+            "weakEvidence": "사례 하나",
+            "missingCounterexample": "짧은 글",
+            "locator": "s1-p2",
+        }
+    ],
 }
 
 

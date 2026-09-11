@@ -52,6 +52,9 @@ class Extraction(_CamelModel):
 
 # --- 분석 결과 ---------------------------------------------------------------
 
+# scan 말고 분석을 이루는 목록 필드. 뷰의 색인·질문·비판·매핑 탭이 하나씩 맡는다.
+ANALYSIS_SECTIONS: tuple[str, ...] = ("gist", "claims", "questions", "critique")
+
 
 class GistItem(_CamelModel):
     section: str
@@ -96,8 +99,18 @@ class Analysis(_CamelModel):
 
     @classmethod
     def json_schema(cls) -> dict:
-        """agent output_format(json_schema)에 넘길 표준 JSON Schema(camelCase)."""
-        return cls.model_json_schema(by_alias=True)
+        """agent output_format(json_schema)에 넘길 표준 JSON Schema(camelCase).
+
+        모델 필드는 기본값이 있어 목록이 비어도 읽힌다. 예전 세션 파일 때문이다.
+        하지만 agent에 그대로 넘기면 scan 하나만 채워도 통과해서, 모델이 가끔
+        나머지를 비운 채 끝낸다. agent에는 목록마다 한 개 이상을 요구한다.
+        CLI가 이 스키마로 검사해 거절하면 모델이 같은 대화에서 다시 채운다.
+        """
+        schema = cls.model_json_schema(by_alias=True)
+        schema["required"] = ["scan", *ANALYSIS_SECTIONS]
+        for name in ANALYSIS_SECTIONS:
+            schema["properties"][name]["minItems"] = 1
+        return schema
 
 
 # --- 세션(원문 + 분석 + 대화) ------------------------------------------------

@@ -137,9 +137,16 @@ def test_view_warns_about_invalid_locators(tmp_path):
             return {
                 "scan": "s",
                 "gist": [{"section": "x", "oneLine": "y", "locator": "s9-p9"}],
-                "claims": [],
-                "questions": [],
-                "critique": [],
+                "claims": [{"claim": "c", "evidence": "e", "locator": "s9-p9"}],
+                "questions": [{"q": "q", "answerQuote": "a", "locator": "s9-p9"}],
+                "critique": [
+                    {
+                        "hiddenPremise": "h",
+                        "weakEvidence": "w",
+                        "missingCounterexample": "m",
+                        "locator": "s9-p9",
+                    }
+                ],
             }
 
     with _client(tmp_path, agent=BadAgent()) as client:

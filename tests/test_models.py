@@ -135,3 +135,12 @@ def test_analysis_json_schema_uses_aliases():
     import json
 
     json.dumps(schema)
+
+
+def test_analysis_json_schema_requires_every_section():
+    """scan만 채워도 통과하면 모델이 가끔 나머지를 비운 채 끝낸다. 실제로 겪었다."""
+    schema = Analysis.json_schema()
+    lists = ["gist", "claims", "questions", "critique"]
+    assert set(schema["required"]) == {"scan", *lists}
+    for name in lists:
+        assert schema["properties"][name]["minItems"] == 1
