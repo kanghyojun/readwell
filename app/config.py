@@ -16,12 +16,18 @@ def _path_from_env(name: str, default: Path) -> Path:
     return Path(raw).expanduser() if raw else default
 
 
+# 모델은 못박아 둔다. CLI 기본값에 맡기면 CLI가 업데이트될 때 모델이 몰래 바뀌고,
+# 무슨 모델로 읽었는지도 알 수 없다. 실제로 최신 모델이 나온 뒤에도 CLI 기본은
+# 이전 세대였다.
+DEFAULT_MODEL = "claude-opus-5"
+
+
 @dataclass
 class Config:
     data_dir: Path = field(default_factory=lambda: REPO_ROOT / "data")
     vault_dir: Path = field(default_factory=lambda: _DEFAULT_VAULT)
     base_url: str = ""  # 뷰 URL 접두. 예: http://100.99.117.44:2100
-    model: str | None = None
+    model: str = DEFAULT_MODEL
     write_vault: bool = True
     host: str = "0.0.0.0"
     port: int = 2100
@@ -39,7 +45,7 @@ class Config:
             data_dir=_path_from_env("READWELL_DATA_DIR", REPO_ROOT / "data"),
             vault_dir=_path_from_env("READWELL_VAULT_DIR", _DEFAULT_VAULT),
             base_url=os.environ.get("READWELL_BASE_URL", ""),
-            model=os.environ.get("READWELL_MODEL") or None,
+            model=os.environ.get("READWELL_MODEL") or DEFAULT_MODEL,
             write_vault=os.environ.get("READWELL_WRITE_VAULT", "1") != "0",
             host=os.environ.get("READWELL_HOST", "0.0.0.0"),
             port=int(os.environ.get("READWELL_PORT", "2100")),

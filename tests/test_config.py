@@ -40,3 +40,15 @@ def test_preview_limits_have_defaults(monkeypatch):
     cfg = Config.from_env()
     assert cfg.preview_max_chars == 40000
     assert cfg.preview_ttl_days == 7
+
+
+def test_model_defaults_to_opus_5(monkeypatch):
+    """CLI 기본 모델에 맡기면 CLI가 업데이트될 때 모델이 몰래 바뀐다."""
+    monkeypatch.delenv("READWELL_MODEL", raising=False)
+    assert Config.from_env().model == "claude-opus-5"
+    assert Config().model == "claude-opus-5"
+
+
+def test_model_comes_from_env(monkeypatch):
+    monkeypatch.setenv("READWELL_MODEL", "claude-sonnet-5")
+    assert Config.from_env().model == "claude-sonnet-5"
