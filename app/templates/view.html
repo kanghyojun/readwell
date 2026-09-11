@@ -57,12 +57,14 @@
 
     <!-- 우: 분석 -->
     <aside class="analysis">
+      {# 탭은 읽는 순서대로 놓는다(README "잘 읽는 법"). 매핑·비판을 먼저 보면
+         AI의 정리를 들고 원문을 읽게 되니 Feynman(추가질문) 뒤에 둔다. #}
       <nav class="tabs">
-        <button class="tab active" data-tab="gist">색인</button>
-        <button class="tab" data-tab="questions">질문</button>
-        <button class="tab" data-tab="critique">비판</button>
-        <button class="tab" data-tab="claims">매핑</button>
-        <button class="tab" data-tab="ask">추가질문</button>
+        <button class="tab active" data-tab="gist"><span class="step">1</span>색인</button>
+        <button class="tab" data-tab="questions"><span class="step">2</span>질문</button>
+        <button class="tab" data-tab="ask"><span class="step">3</span>추가질문</button>
+        <button class="tab" data-tab="claims"><span class="step">4</span>매핑</button>
+        <button class="tab" data-tab="critique"><span class="step">5</span>비판</button>
       </nav>
 
       {% if analysis %}

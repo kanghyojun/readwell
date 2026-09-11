@@ -55,6 +55,7 @@ body {
   padding: .3rem .7rem; border-radius: 999px; cursor: pointer; font-size: .85rem;
 }
 .tab.active { color: #fff; background: var(--accent); border-color: var(--accent); }
+.tab .step { margin-right: .3rem; font-size: .75rem; font-variant-numeric: tabular-nums; opacity: .7; }
 
 .panel { display: none; }
 .panel.active { display: block; }

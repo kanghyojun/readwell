@@ -166,6 +166,16 @@ def test_view_renders_original_with_anchors_and_analysis(tmp_path):
     assert "핵심 주장은?" in html  # 프리셋 질문
 
 
+def test_view_tabs_follow_reading_order(tmp_path):
+    """README "잘 읽는 법"의 순서다. 매핑·비판은 Feynman(추가질문) 뒤에 본다."""
+    with _client(tmp_path) as client:
+        sid = _read(client)
+        html = client.get(f"/view/{sid}").text
+    order = ["gist", "questions", "ask", "claims", "critique"]
+    positions = [html.index(f'data-tab="{name}"') for name in order]
+    assert positions == sorted(positions)
+
+
 def test_view_unknown_id_returns_404(tmp_path):
     client = _client(tmp_path)
     assert client.get("/view/nope").status_code == 404
