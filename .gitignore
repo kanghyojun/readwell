@@ -8,3 +8,7 @@ data/previews/
 !data/.gitkeep
 *.egg-info/
 uv.lock
+.DS_Store
+# web-ext 빌드·서명 결과물과 AMO 업로드 상태
+web-ext-artifacts/
+extension/.amo-upload-uuid
